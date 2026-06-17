@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "habit-icons public read" ON storage.objects;
