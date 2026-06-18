@@ -24,6 +24,15 @@ type LocalRecord = {
 const LOCAL_SESSION_KEY = "sync.local.session";
 const LOCAL_DB_KEY = "sync.local.db";
 
+/**
+ * Fallback público do Supabase.
+ * Essa chave é a Publishable Key, própria para uso no frontend.
+ * Não coloque Secret Key aqui.
+ */
+const FALLBACK_SUPABASE_URL = "https://zacwhvlhfrnihoxgbsvm.supabase.co";
+const FALLBACK_SUPABASE_PUBLISHABLE_KEY =
+  "sb_publishable_6R0Qodr_b5FR2JLPfpjOVg_qciTglsc";
+
 function createLocalSession(
   email: string,
   metadata: Record<string, unknown> = {}
@@ -197,7 +206,9 @@ function createLocalQuery(table: string) {
         const now = new Date().toISOString();
 
         const matches = (item: LocalRecord) =>
-          Object.entries(matchPayload).every(([key, value]) => item[key] === value);
+          Object.entries(matchPayload).every(
+            ([key, value]) => item[key] === value
+          );
 
         db[table] = current.map((item) =>
           matches(item)
@@ -275,7 +286,9 @@ function createLocalQuery(table: string) {
 
         db[table] = current.filter(
           (item) =>
-            !Object.entries(matchPayload).every(([key, value]) => item[key] === value)
+            !Object.entries(matchPayload).every(
+              ([key, value]) => item[key] === value
+            )
         );
 
         saveLocalDb(db);
@@ -386,7 +399,9 @@ function createLocalSupabaseClient() {
         };
       },
 
-      onAuthStateChange(callback: (_event: string, session: LocalSession | null) => void) {
+      onAuthStateChange(
+        callback: (_event: string, session: LocalSession | null) => void
+      ) {
         const session = readLocalSession();
 
         setTimeout(() => {
@@ -436,14 +451,14 @@ function createLocalSupabaseClient() {
       },
 
       async signInWithOAuth() {
-        const session = createLocalSession("dev@local.test");
-        saveLocalSession(session);
-
         return {
           data: {
             url: null,
           },
-          error: null,
+          error: {
+            message:
+              "Modo local ativo. Configure o Supabase real para usar login com Google.",
+          },
         };
       },
 
@@ -496,14 +511,21 @@ function createLocalSupabaseClient() {
 }
 
 function createSupabaseClient() {
+  const USE_LOCAL_SUPABASE =
+    import.meta.env.VITE_USE_LOCAL_SUPABASE === "true";
+
+  if (USE_LOCAL_SUPABASE) {
+    console.warn("[Supabase] VITE_USE_LOCAL_SUPABASE ativo. Usando modo local.");
+    return createLocalSupabaseClient();
+  }
+
   const SUPABASE_URL =
-    import.meta.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    import.meta.env.VITE_SUPABASE_URL || FALLBACK_SUPABASE_URL;
 
   const SUPABASE_PUBLISHABLE_KEY =
     import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
     import.meta.env.VITE_SUPABASE_ANON_KEY ||
-    process.env.SUPABASE_PUBLISHABLE_KEY ||
-    process.env.SUPABASE_ANON_KEY;
+    FALLBACK_SUPABASE_PUBLISHABLE_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     console.warn(
@@ -518,15 +540,19 @@ function createSupabaseClient() {
       storage: typeof window !== "undefined" ? localStorage : undefined,
       persistSession: true,
       autoRefreshToken: true,
+      detectSessionInUrl: true,
     },
   });
 }
 
 let _supabase: ReturnType<typeof createSupabaseClient> | undefined;
 
-export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>, {
-  get(_, prop, receiver) {
-    if (!_supabase) _supabase = createSupabaseClient();
-    return Reflect.get(_supabase, prop, receiver);
-  },
-});
+export const supabase = new Proxy(
+  {} as ReturnType<typeof createSupabaseClient>,
+  {
+    get(_, prop, receiver) {
+      if (!_supabase) _supabase = createSupabaseClient();
+      return Reflect.get(_supabase, prop, receiver);
+    },
+  }
+);
