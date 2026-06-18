@@ -1,6 +1,8 @@
-@import "tailwindcss" source(none);
-@source "../src";
+@import "tailwindcss";
 @import "tw-animate-css";
+
+@source "../src/**/*.{ts,tsx}";
+@source "../components/**/*.{ts,tsx}";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -99,14 +101,12 @@
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.dark { /* Same palette — app is dark-first */ }
 
 /* ============= Theme variants ============= */
 html { transition: background-color 0.4s ease, color 0.4s ease; }
 *, *::before, *::after { transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease; }
 
-/* Midnight Sync (default — same as :root) */
-[data-theme="midnight-sync"] {}
+/* Midnight Sync é o tema padrão definido em :root */
 
 /* Crimson Focus */
 [data-theme="crimson-focus"] {
@@ -348,9 +348,9 @@ html { transition: background-color 0.4s ease, color 0.4s ease; }
 
 /* Refinement levels — subtle visual evolution as the user grows */
 .refined-1 .glass { box-shadow: 0 4px 24px oklch(0 0 0 / 0.25); }
-.refined-2 .glass { box-shadow: 0 8px 32px oklch(0 0 0 / 0.3), 0 0 0 1px var(--primary-glow) / 0.08; }
-.refined-3 .glass { box-shadow: 0 8px 36px oklch(0 0 0 / 0.35), 0 0 24px var(--primary) / 0.12; }
-.refined-3 .text-gradient { filter: drop-shadow(0 0 12px var(--primary-glow)); }
+.refined-2 .glass { box-shadow: 0 8px 32px oklch(0 0 0 / 0.3), 0 0 0 1px color-mix(in oklch, var(--primary-glow) 8%, transparent); }
+.refined-3 .glass { box-shadow: 0 8px 36px oklch(0 0 0 / 0.35), 0 0 24px color-mix(in oklch, var(--primary) 12%, transparent); }
+.refined-3 .text-gradient { filter: drop-shadow(0 0 12px color-mix(in oklch, var(--primary-glow) 70%, transparent)); }
 
 /* Breathing animation for Deep Focus */
 @keyframes breathe {
@@ -361,7 +361,7 @@ html { transition: background-color 0.4s ease, color 0.4s ease; }
 
 
 @layer base {
-  * { border-color: var(--color-border); }
+  * { border-color: var(--border); }
   html, body { background: var(--background); color: var(--foreground); font-family: var(--font-sans); }
   body { background-image: var(--gradient-hero); background-attachment: fixed; min-height: 100vh; }
 }
