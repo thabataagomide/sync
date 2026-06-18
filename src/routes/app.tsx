@@ -1,11 +1,21 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { getNotifPrefs, notify, today } from "@/lib/sync-data";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  isValidUsername,
+  normalizeUsername,
+  PENDING_USERNAME_KEY,
+  USERNAME_RULE_MESSAGE,
+} from "@/lib/username";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/app")({
   beforeLoad: async () => {
@@ -109,8 +119,13 @@ function useNotifierLoop() {
 
 function AppLayout() {
   useNotifierLoop();
+  const { user } = useAuth();
+
+  if (!user) return null;
+
   return (
-    <SidebarProvider>
+    <RequireUsername user={user}>
+      <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <div className="hidden md:block"><AppSidebar /></div>
         <div className="flex-1 flex flex-col min-w-0">
@@ -124,6 +139,136 @@ function AppLayout() {
         </div>
         <MobileBottomNav />
       </div>
-    </SidebarProvider>
+      </SidebarProvider>
+    </RequireUsername>
+  );
+}
+
+function RequireUsername({
+  children,
+  user,
+}: {
+  children: ReactNode;
+  user: NonNullable<ReturnType<typeof useAuth>["user"]>;
+}) {
+  const [checking, setChecking] = useState(true);
+  const [hasUsername, setHasUsername] = useState(false);
+  const [username, setUsername] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    const load = async () => {
+      setChecking(true);
+
+      const { data } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (!alive) return;
+
+      const currentUsername = data?.username ?? "";
+      const pendingUsername =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem(PENDING_USERNAME_KEY)
+          : "";
+
+      setHasUsername(Boolean(currentUsername));
+      setUsername(currentUsername || normalizeUsername(pendingUsername ?? ""));
+      setChecking(false);
+    };
+
+    load();
+
+    return () => {
+      alive = false;
+    };
+  }, [user.id]);
+
+  const saveUsername = async () => {
+    const normalized = normalizeUsername(username);
+
+    if (!isValidUsername(normalized)) {
+      toast.error(USERNAME_RULE_MESSAGE);
+      return;
+    }
+
+    setSaving(true);
+
+    const { data: existing, error: lookupError } = await supabase.functions.invoke(
+      "username-lookup",
+      {
+        body: { username: normalized },
+      }
+    );
+
+    if (lookupError) {
+      setSaving(false);
+      toast.error(lookupError.message);
+      return;
+    }
+
+    if (existing?.email && existing.email !== user.email) {
+      setSaving(false);
+      toast.error("Esse user já está em uso. Escolha outro.");
+      return;
+    }
+
+    const { error } = await supabase.from("profiles").upsert({
+      id: user.id,
+      email: user.email ?? null,
+      username: normalized,
+    });
+
+    setSaving(false);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(PENDING_USERNAME_KEY);
+    }
+
+    setHasUsername(true);
+    toast.success("User salvo");
+  };
+
+  if (checking) return null;
+  if (hasUsername) return <>{children}</>;
+
+  return (
+    <div className="min-h-screen grid place-items-center px-6">
+      <div className="w-full max-w-md glass rounded-3xl p-8 shadow-elegant">
+        <h1 className="text-2xl font-bold">Escolha seu user</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Ele será usado no seu perfil e também para entrar com user e senha.
+        </p>
+
+        <div className="space-y-4 mt-6">
+          <div>
+            <Label>User</Label>
+            <Input
+              value={username}
+              onChange={(e) => setUsername(normalizeUsername(e.target.value))}
+              placeholder="seu_user"
+              maxLength={20}
+              disabled={saving}
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {USERNAME_RULE_MESSAGE}
+            </p>
+          </div>
+
+          <Button onClick={saveUsername} className="w-full" disabled={saving}>
+            {saving ? "Salvando..." : "Continuar"}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

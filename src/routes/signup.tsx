@@ -5,17 +5,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  isValidUsername,
+  normalizeUsername,
+  PENDING_USERNAME_KEY,
+  USERNAME_RULE_MESSAGE,
+} from "@/lib/username";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/signup")({ component: SignupPage });
 
 const GOOGLE_AUTH_HREF =
   "https://zacwhvlhfrnihoxgbsvm.supabase.co/auth/v1/authorize?provider=google&redirect_to=https%3A%2F%2Fsync.syncmodeapp.workers.dev%2Fapp";
-
 function SignupPage() {
   const nav = useNavigate();
 
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -37,8 +43,31 @@ function SignupPage() {
     });
   }, []);
 
+  const validateUsername = () => {
+    const normalized = normalizeUsername(username);
+
+    if (!isValidUsername(normalized)) {
+      toast.error(USERNAME_RULE_MESSAGE);
+      return null;
+    }
+
+    return normalized;
+  };
+
+  const usernameExists = async (value: string) => {
+    const { data, error } = await supabase.functions.invoke("username-lookup", {
+      body: { username: value },
+    });
+
+    if (error) throw error;
+    return Boolean(data?.email);
+  };
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    const normalizedUsername = validateUsername();
+    if (!normalizedUsername) return;
 
     if (password.length < 6) {
       toast.error("A senha precisa ter pelo menos 6 caracteres.");
@@ -47,6 +76,18 @@ function SignupPage() {
 
     setLoading(true);
 
+    try {
+      if (await usernameExists(normalizedUsername)) {
+        toast.error("Esse user já está em uso. Escolha outro.");
+        setLoading(false);
+        return;
+      }
+    } catch (error: any) {
+      toast.error(error.message ?? "Não foi possível validar o user.");
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -54,6 +95,7 @@ function SignupPage() {
         emailRedirectTo: `${window.location.origin}/app`,
         data: {
           full_name: name,
+          username: normalizedUsername,
         },
       },
     });
@@ -73,6 +115,27 @@ function SignupPage() {
 
     toast.success("Conta criada! Verifique seu e-mail para confirmar o cadastro.");
     nav({ to: "/login" });
+  };
+
+  const signUpWithGoogle = async () => {
+    const normalizedUsername = validateUsername();
+    if (!normalizedUsername) return;
+
+    setLoading(true);
+
+    try {
+      if (await usernameExists(normalizedUsername)) {
+        toast.error("Esse user já está em uso. Escolha outro.");
+        setLoading(false);
+        return;
+      }
+
+      window.localStorage.setItem(PENDING_USERNAME_KEY, normalizedUsername);
+      window.location.href = GOOGLE_AUTH_HREF;
+    } catch (error: any) {
+      toast.error(error.message ?? "Não foi possível validar o user.");
+      setLoading(false);
+    }
   };
 
   const switchAccount = async () => {
@@ -139,12 +202,15 @@ function SignupPage() {
             </p>
 
             <div className="mt-6">
-              <a
-                href={GOOGLE_AUTH_HREF}
-                className="inline-flex h-10 w-full items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+              <Button
+                type="button"
+                variant="outline"
+                onClick={signUpWithGoogle}
+                className="w-full"
+                disabled={loading}
               >
                 Criar conta com Google
-              </a>
+              </Button>
             </div>
 
             <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
@@ -164,6 +230,23 @@ function SignupPage() {
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Seu nome"
                 />
+              </div>
+
+              <div>
+                <Label>User</Label>
+
+                <Input
+                  type="text"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(normalizeUsername(e.target.value))}
+                  placeholder="seu_user"
+                  maxLength={20}
+                />
+
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {USERNAME_RULE_MESSAGE}
+                </p>
               </div>
 
               <div>

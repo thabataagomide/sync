@@ -439,6 +439,38 @@ function createLocalSupabaseClient() {
         options?: { data?: Record<string, unknown> };
       }) {
         const session = createLocalSession(email, options?.data ?? {});
+        const db = readLocalDb();
+        const profiles = db.profiles ?? [];
+        const now = new Date().toISOString();
+        const existingIndex = profiles.findIndex(
+          (profile) => profile.id === session.user.id
+        );
+        const profile = {
+          id: session.user.id,
+          user_id: session.user.id,
+          email,
+          full_name: options?.data?.full_name ?? null,
+          username: options?.data?.username ?? null,
+          xp: 0,
+          level: 1,
+          sync_flow: 0,
+          modules_enabled: {},
+          theme: "midnight-sync",
+          created_at: now,
+          updated_at: now,
+        };
+
+        if (existingIndex >= 0) {
+          profiles[existingIndex] = {
+            ...profiles[existingIndex],
+            ...profile,
+          };
+        } else {
+          profiles.push(profile);
+        }
+
+        db.profiles = profiles;
+        saveLocalDb(db);
         saveLocalSession(session);
 
         return {
@@ -498,7 +530,39 @@ function createLocalSupabaseClient() {
     },
 
     functions: {
-      async invoke() {
+      async invoke(functionName: string, options?: { body?: any }) {
+        if (functionName === "delete-account") {
+          saveLocalSession(null);
+
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem(LOCAL_DB_KEY);
+          }
+
+          return {
+            data: {
+              ok: true,
+            },
+            error: null,
+          };
+        }
+
+        if (functionName === "username-lookup") {
+          const username = String(options?.body?.username ?? "")
+            .trim()
+            .toLowerCase();
+          const db = readLocalDb();
+          const profile = (db.profiles ?? []).find(
+            (item) => item.username === username
+          );
+
+          return {
+            data: {
+              email: profile?.email ?? null,
+            },
+            error: null,
+          };
+        }
+
         return {
           data: {
             insight: "Modo local ativo. Conecte o Supabase para gerar insights reais.",

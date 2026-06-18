@@ -10,10 +10,11 @@ import { Progress } from "@/components/ui/progress";
 import { Trophy, Zap, Flame, Sparkles, AlertTriangle, Camera } from "lucide-react";
 import { toast } from "sonner";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { tierFor, nextTier, streakTier, xpForLevel, LEVEL_TIERS } from "@/lib/levels";
+import { isValidUsername, normalizeUsername, USERNAME_RULE_MESSAGE } from "@/lib/username";
 
 export const Route = createFileRoute("/app/profile")({ component: ProfilePage });
 
@@ -35,6 +36,7 @@ function ProfilePage() {
   const [achievements, setAchievements] = useState<any[]>([]);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -45,7 +47,7 @@ function ProfilePage() {
   useEffect(() => {
     if (!user) return;
     supabase.from("achievements").select("*").eq("user_id", user.id).order("unlocked_at", { ascending: false })
-      .then(({ data }) => setAchievements(data ?? []));
+      .then((result: { data: any[] | null }) => setAchievements(result.data ?? []));
   }, [user?.id]);
 
   const save = async () => {
@@ -57,13 +59,18 @@ function ProfilePage() {
 
   const saveUsername = async () => {
     if (!user) return;
-    const u = username.trim().toLowerCase().replace(/\s+/g, "");
+    const u = normalizeUsername(username);
     if (!u) return toast.error("Username não pode ficar vazio");
-    if (!/^[a-z0-9_.]{3,20}$/.test(u)) return toast.error("Use 3-20 caracteres: letras, números, . ou _");
+    if (!isValidUsername(u)) return toast.error(USERNAME_RULE_MESSAGE);
     setSavingUsername(true);
-    // Check duplicates
-    const { data: existing } = await supabase.from("profiles").select("id").eq("username", u).neq("id", user.id).maybeSingle();
-    if (existing) {
+    const { data: existing, error: lookupError } = await supabase.functions.invoke("username-lookup", {
+      body: { username: u },
+    });
+    if (lookupError) {
+      setSavingUsername(false);
+      return toast.error(lookupError.message);
+    }
+    if (existing?.email && existing.email !== user.email) {
       setSavingUsername(false);
       return toast.error("Esse username já está em uso. Escolha outro.");
     }
@@ -99,10 +106,12 @@ function ProfilePage() {
     if (confirmText !== "EXCLUIR") { toast.error("Digite EXCLUIR para confirmar"); return; }
     setDeleting(true);
     try {
-      const { error } = await supabase.functions.invoke("delete-account");
+      const { data, error } = await supabase.functions.invoke("delete-account");
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       await supabase.auth.signOut();
       toast.success("Conta excluída permanentemente");
+      setDeleteDialogOpen(false);
       nav({ to: "/" });
     } catch (e: any) {
       toast.error(e.message ?? "Erro ao excluir conta");
@@ -239,7 +248,7 @@ function ProfilePage() {
             <div className="flex gap-2">
               <Input
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => setUsername(normalizeUsername(e.target.value))}
                 placeholder="seu_username"
                 maxLength={20}
               />
@@ -247,7 +256,7 @@ function ProfilePage() {
                 {savingUsername ? "..." : "Salvar"}
               </Button>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">3-20 caracteres · letras minúsculas, números, "." ou "_" · precisa ser único</p>
+            <p className="text-[11px] text-muted-foreground mt-1">{USERNAME_RULE_MESSAGE} · precisa ser único</p>
           </div>
           <div className="flex gap-3 pt-1">
             <Button onClick={save}>Salvar nome</Button>
@@ -268,7 +277,14 @@ function ProfilePage() {
             <p className="text-sm text-muted-foreground">A exclusão da conta é permanente e irreversível.</p>
           </div>
         </div>
-        <AlertDialog>
+        <AlertDialog
+          open={deleteDialogOpen}
+          onOpenChange={(open) => {
+            if (deleting) return;
+            setDeleteDialogOpen(open);
+            if (!open) setConfirmText("");
+          }}
+        >
           <AlertDialogTrigger asChild>
             <Button variant="destructive">Excluir minha conta</Button>
           </AlertDialogTrigger>
@@ -283,17 +299,27 @@ function ProfilePage() {
                   <li>notas, sessões de foco e hidratação</li>
                   <li>configurações e conquistas</li>
                 </ul>
-                <div className="mt-3">
-                  <Label>Digite <strong>EXCLUIR</strong> para confirmar</Label>
-                  <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="EXCLUIR" className="mt-1" />
-                </div>
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <div>
+              <Label>Digite <strong>EXCLUIR</strong> para confirmar</Label>
+              <Input
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                placeholder="EXCLUIR"
+                className="mt-1"
+                disabled={deleting}
+              />
+            </div>
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setConfirmText("")}>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={deleteAccount} disabled={deleting || confirmText !== "EXCLUIR"} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              <Button
+                variant="destructive"
+                onClick={deleteAccount}
+                disabled={deleting || confirmText !== "EXCLUIR"}
+              >
                 {deleting ? "Excluindo..." : "Sim, excluir tudo"}
-              </AlertDialogAction>
+              </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

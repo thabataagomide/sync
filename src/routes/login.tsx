@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
+import { normalizeUsername } from "@/lib/username";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
@@ -15,7 +16,7 @@ const GOOGLE_AUTH_HREF =
 function LoginPage() {
   const nav = useNavigate();
 
-  const [email, setEmail] = useState("");
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -40,6 +41,29 @@ function LoginPage() {
     e.preventDefault();
 
     setLoading(true);
+
+    let email = login.trim();
+
+    if (!email.includes("@")) {
+      const username = normalizeUsername(email);
+      const { data, error } = await supabase.functions.invoke("username-lookup", {
+        body: { username },
+      });
+
+      if (error) {
+        setLoading(false);
+        toast.error(error.message);
+        return;
+      }
+
+      if (!data?.email) {
+        setLoading(false);
+        toast.error("User não encontrado.");
+        return;
+      }
+
+      email = data.email;
+    }
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -137,13 +161,13 @@ function LoginPage() {
 
             <form onSubmit={onSubmit} className="space-y-4">
               <div>
-                <Label>Email</Label>
+                <Label>Email ou user</Label>
 
                 <Input
-                  type="email"
+                  type="text"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={login}
+                  onChange={(e) => setLogin(e.target.value)}
                 />
               </div>
 
