@@ -9,6 +9,9 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
+const SUPABASE_AUTH_URL =
+  "https://zacwhvlhfrnihoxgbsvm.supabase.co/auth/v1/authorize";
+
 function LoginPage() {
   const nav = useNavigate();
 
@@ -55,38 +58,20 @@ function LoginPage() {
     nav({ to: "/app" });
   };
 
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = () => {
     try {
       setGoogleLoading(true);
 
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/app`,
-          queryParams: {
-            prompt: "select_account",
-          },
-        },
-      });
+      const redirectTo = `${window.location.origin}/app`;
+      const authUrl = new URL(SUPABASE_AUTH_URL);
 
-      if (error) {
-        console.error("Erro OAuth Google:", error);
-        toast.error(error.message ?? "Falha no login com Google");
-        setGoogleLoading(false);
-        return;
-      }
+      authUrl.searchParams.set("provider", "google");
+      authUrl.searchParams.set("redirect_to", redirectTo);
+      authUrl.searchParams.set("prompt", "select_account");
 
-      if (data?.url) {
-        window.location.href = data.url;
-        return;
-      }
-
-      toast.error(
-        "O Google não redirecionou. Confira se o Supabase real está conectado."
-      );
-      setGoogleLoading(false);
+      window.location.assign(authUrl.toString());
     } catch (err) {
-      console.error("Erro inesperado no login Google:", err);
+      console.error("Erro ao iniciar login Google:", err);
       toast.error("Erro ao iniciar login com Google.");
       setGoogleLoading(false);
     }
@@ -218,7 +203,10 @@ function LoginPage() {
             </form>
 
             <div className="mt-4 flex justify-between text-sm">
-              <Link to="/forgot-password" className="text-primary hover:underline">
+              <Link
+                to="/forgot-password"
+                className="text-primary hover:underline"
+              >
                 Esqueci a senha
               </Link>
 

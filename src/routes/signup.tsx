@@ -9,6 +9,9 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/signup")({ component: SignupPage });
 
+const SUPABASE_AUTH_URL =
+  "https://zacwhvlhfrnihoxgbsvm.supabase.co/auth/v1/authorize";
+
 function SignupPage() {
   const nav = useNavigate();
 
@@ -73,38 +76,20 @@ function SignupPage() {
     nav({ to: "/login" });
   };
 
-  const signupWithGoogle = async () => {
+  const signupWithGoogle = () => {
     try {
       setGoogleLoading(true);
 
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/app`,
-          queryParams: {
-            prompt: "select_account",
-          },
-        },
-      });
+      const redirectTo = `${window.location.origin}/app`;
+      const authUrl = new URL(SUPABASE_AUTH_URL);
 
-      if (error) {
-        console.error("Erro OAuth Google:", error);
-        toast.error(error.message ?? "Falha ao criar conta com Google");
-        setGoogleLoading(false);
-        return;
-      }
+      authUrl.searchParams.set("provider", "google");
+      authUrl.searchParams.set("redirect_to", redirectTo);
+      authUrl.searchParams.set("prompt", "select_account");
 
-      if (data?.url) {
-        window.location.href = data.url;
-        return;
-      }
-
-      toast.error(
-        "O Google não redirecionou. Confira se o Supabase real está conectado."
-      );
-      setGoogleLoading(false);
+      window.location.assign(authUrl.toString());
     } catch (err) {
-      console.error("Erro inesperado no cadastro Google:", err);
+      console.error("Erro ao iniciar cadastro Google:", err);
       toast.error("Erro ao iniciar cadastro com Google.");
       setGoogleLoading(false);
     }
