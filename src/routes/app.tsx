@@ -1,4 +1,5 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import type { User } from "@supabase/supabase-js";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -119,12 +120,35 @@ function useNotifierLoop() {
 
 function AppLayout() {
   useNotifierLoop();
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  const [sessionUser, setSessionUser] = useState<User | null>(null);
 
-  if (!user) return null;
+  useEffect(() => {
+    if (user) {
+      setSessionUser(null);
+      return;
+    }
+
+    let alive = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
+      setSessionUser((data.session?.user as User | undefined) ?? null);
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, [user?.id]);
+
+  const activeUser = user ?? sessionUser;
+
+  if (!activeUser) {
+    return <AppLoading message={loading ? "Carregando sua conta..." : "Validando sessão..."} />;
+  }
 
   return (
-    <RequireUsername user={user}>
+    <RequireUsername user={activeUser}>
       <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <div className="hidden md:block"><AppSidebar /></div>
@@ -155,20 +179,28 @@ function RequireUsername({
   const [hasUsername, setHasUsername] = useState(false);
   const [username, setUsername] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let alive = true;
 
     const load = async () => {
       setChecking(true);
+      setLoadError("");
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("profiles")
         .select("username")
         .eq("id", user.id)
         .maybeSingle();
 
       if (!alive) return;
+
+      if (error) {
+        setLoadError(error.message);
+        setChecking(false);
+        return;
+      }
 
       const currentUsername = data?.username ?? "";
       const pendingUsername =
@@ -238,7 +270,22 @@ function RequireUsername({
     toast.success("User salvo");
   };
 
-  if (checking) return null;
+  if (checking) return <AppLoading message="Carregando perfil..." />;
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen grid place-items-center px-6">
+        <div className="w-full max-w-md glass rounded-3xl p-8 shadow-elegant">
+          <h1 className="text-2xl font-bold">Não foi possível carregar o perfil</h1>
+          <p className="text-sm text-muted-foreground mt-2">{loadError}</p>
+          <Button className="mt-6 w-full" onClick={() => window.location.reload()}>
+            Tentar novamente
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (hasUsername) return <>{children}</>;
 
   return (
@@ -268,6 +315,17 @@ function RequireUsername({
             {saving ? "Salvando..." : "Continuar"}
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AppLoading({ message }: { message: string }) {
+  return (
+    <div className="min-h-screen grid place-items-center px-6">
+      <div className="text-center">
+        <div className="mx-auto h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-primary-glow shadow-elegant animate-pulse" />
+        <p className="mt-4 text-sm text-muted-foreground">{message}</p>
       </div>
     </div>
   );
