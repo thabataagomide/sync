@@ -9,8 +9,8 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
-const SUPABASE_AUTH_URL =
-  "https://zacwhvlhfrnihoxgbsvm.supabase.co/auth/v1/authorize";
+const GOOGLE_AUTH_HREF =
+  "https://zacwhvlhfrnihoxgbsvm.supabase.co/auth/v1/authorize?provider=google&redirect_to=https%3A%2F%2Fsync.syncmodeapp.workers.dev%2Fapp";
 
 function LoginPage() {
   const nav = useNavigate();
@@ -19,7 +19,6 @@ function LoginPage() {
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
 
   const [activeUser, setActiveUser] = useState<{ email?: string } | null>(null);
@@ -56,25 +55,6 @@ function LoginPage() {
 
     toast.success("Bem-vindo de volta!");
     nav({ to: "/app" });
-  };
-
-  const loginWithGoogle = () => {
-    try {
-      setGoogleLoading(true);
-
-      const redirectTo = `${window.location.origin}/app`;
-      const authUrl = new URL(SUPABASE_AUTH_URL);
-
-      authUrl.searchParams.set("provider", "google");
-      authUrl.searchParams.set("redirect_to", redirectTo);
-      authUrl.searchParams.set("prompt", "select_account");
-
-      window.location.assign(authUrl.toString());
-    } catch (err) {
-      console.error("Erro ao iniciar login Google:", err);
-      toast.error("Erro ao iniciar login com Google.");
-      setGoogleLoading(false);
-    }
   };
 
   const switchAccount = async () => {
@@ -141,15 +121,12 @@ function LoginPage() {
             </p>
 
             <div className="mt-6">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={loginWithGoogle}
-                disabled={googleLoading}
-                className="w-full"
+              <a
+                href={GOOGLE_AUTH_HREF}
+                className="inline-flex h-10 w-full items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
               >
-                {googleLoading ? "Abrindo Google..." : "Entrar com Google"}
-              </Button>
+                Entrar com Google
+              </a>
             </div>
 
             <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
