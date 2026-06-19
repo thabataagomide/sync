@@ -122,26 +122,53 @@ function AppLayout() {
   useNotifierLoop();
   const { user, loading } = useAuth();
   const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [authError, setAuthError] = useState("");
 
   useEffect(() => {
     if (user) {
       setSessionUser(null);
+      setAuthError("");
       return;
     }
 
     let alive = true;
+    const timeout = window.setTimeout(() => {
+      if (!alive) return;
+      setAuthError("A sessão demorou demais para carregar.");
+    }, 8000);
 
     supabase.auth.getSession().then(({ data }) => {
       if (!alive) return;
+      window.clearTimeout(timeout);
       setSessionUser((data.session?.user as User | undefined) ?? null);
+      setAuthError(data.session ? "" : "Sua sessão não foi encontrada.");
+    }).catch((error) => {
+      if (!alive) return;
+      window.clearTimeout(timeout);
+      setAuthError(error.message ?? "Não foi possível validar sua sessão.");
     });
 
     return () => {
       alive = false;
+      window.clearTimeout(timeout);
     };
   }, [user?.id]);
 
   const activeUser = user ?? sessionUser;
+
+  if (authError && !activeUser) {
+    return (
+      <AppProblem
+        title="Sessão não carregou"
+        message={authError}
+        actionLabel="Voltar para login"
+        onAction={async () => {
+          await supabase.auth.signOut();
+          window.location.href = "/login";
+        }}
+      />
+    );
+  }
 
   if (!activeUser) {
     return <AppLoading message={loading ? "Carregando sua conta..." : "Validando sessão..."} />;
